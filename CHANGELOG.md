@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## unreleased
+
+### Added
+
+- Added support for multiple AI providers:
+  - Google Gemini (using the `-p gemini` flag)
+  - Anthropic Claude (using the `-p claude` flag)
+  - OpenAI (default, using the `-p openai` flag)
+- Added provider selection in the CLI with the `-p` flag
+- Added model specification with the `-model` flag 
+- Added provider and model info display with the `-m` flag
+- Added fully interactive numbered menu for provider and model selection
+- Added user-friendly model descriptions for each provider
+- Added support for latest Gemini models (2.5, 2.0, 1.5)
+- Added error handling and default selections for improved user experience
+- Fixed streaming issues to prevent chat mode from hanging
+- Improved error handling in all providers to ensure proper stream completion
+- Added support for provider-specific configuration
+
 ## 0.6.0
 
 ### Changed

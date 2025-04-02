@@ -3,74 +3,92 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 
+	"github.com/xsikor/yai/ai/provider"
 	"github.com/xsikor/yai/config"
 	"github.com/xsikor/yai/system"
-
-	"github.com/sashabaranov/go-openai"
 )
 
 const noexec = "[noexec]"
 
 type Engine struct {
-	mode         EngineMode
-	config       *config.Config
-	client       *openai.Client
-	execMessages []openai.ChatCompletionMessage
-	chatMessages []openai.ChatCompletionMessage
-	channel      chan EngineChatStreamOutput
-	pipe         string
-	running      bool
+	mode              EngineMode
+	config            *config.Config
+	provider          provider.Provider
+	execMessages      []provider.Message
+	chatMessages      []provider.Message
+	sharedHistory     []provider.Message // Shared context between modes
+	terminalOutputs   []string           // History of terminal outputs for context
+	maxSharedHistory  int                // Maximum number of messages to keep in shared history
+	maxTerminalOutput int                // Maximum number of terminal outputs to keep
+	channel           chan EngineChatStreamOutput
+	pipe              string
+	running           bool
 }
 
 func NewEngine(mode EngineMode, config *config.Config) (*Engine, error) {
-	var client *openai.Client
-
-	if config.GetAiConfig().GetProxy() != "" {
-
-		clientConfig := openai.DefaultConfig(config.GetAiConfig().GetKey())
-
-		proxyUrl, err := url.Parse(config.GetAiConfig().GetProxy())
-		if err != nil {
-			return nil, err
-		}
-
-		transport := &http.Transport{
-			Proxy: http.ProxyURL(proxyUrl),
-		}
-
-		clientConfig.HTTPClient = &http.Client{
-			Transport: transport,
-		}
-
-		client = openai.NewClientWithConfig(clientConfig)
-	} else {
-		client = openai.NewClient(config.GetAiConfig().GetKey())
+	providerInstance, err := provider.CreateProvider(
+		config.GetAiConfig().GetProviderType(),
+		config.GetAiConfig().GetKey(),
+		config.GetAiConfig().GetProxy(),
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Engine{
-		mode:         mode,
-		config:       config,
-		client:       client,
-		execMessages: make([]openai.ChatCompletionMessage, 0),
-		chatMessages: make([]openai.ChatCompletionMessage, 0),
-		channel:      make(chan EngineChatStreamOutput),
-		pipe:         "",
-		running:      false,
+		mode:              mode,
+		config:            config,
+		provider:          providerInstance,
+		execMessages:      make([]provider.Message, 0),
+		chatMessages:      make([]provider.Message, 0),
+		sharedHistory:     make([]provider.Message, 0),
+		terminalOutputs:   make([]string, 0),
+		maxSharedHistory:  5, // Store the last 5 messages for context
+		maxTerminalOutput: 5, // Store the last 5 terminal outputs
+		channel:           make(chan EngineChatStreamOutput),
+		pipe:              "",
+		running:           false,
 	}, nil
 }
 
 func (e *Engine) SetMode(mode EngineMode) *Engine {
+	// If mode is changing, save current context before switching
+	if e.mode != mode {
+		e.updateSharedHistory()
+	}
+
 	e.mode = mode
 
 	return e
+}
+
+// updateSharedHistory saves recent messages from current mode to shared history
+func (e *Engine) updateSharedHistory() {
+	var currentMessages []provider.Message
+
+	// Get messages from current mode
+	if e.mode == ExecEngineMode {
+		currentMessages = e.execMessages
+	} else {
+		currentMessages = e.chatMessages
+	}
+
+	// Only process if we have messages
+	if len(currentMessages) > 0 {
+		// Get the latest messages (up to maxSharedHistory)
+		start := 0
+		if len(currentMessages) > e.maxSharedHistory {
+			start = len(currentMessages) - e.maxSharedHistory
+		}
+
+		// Update shared history with the latest messages
+		e.sharedHistory = make([]provider.Message, len(currentMessages[start:]))
+		copy(e.sharedHistory, currentMessages[start:])
+	}
 }
 
 func (e *Engine) GetMode() EngineMode {
@@ -81,10 +99,98 @@ func (e *Engine) GetChannel() chan EngineChatStreamOutput {
 	return e.channel
 }
 
+// AddTerminalOutput adds a terminal output to history
+func (e *Engine) AddTerminalOutput(output string) *Engine {
+	// Skip empty outputs
+	if strings.TrimSpace(output) == "" {
+		return e
+	}
+
+	// Add new output to the terminal outputs
+	e.terminalOutputs = append(e.terminalOutputs, output)
+
+	// Trim history if it exceeds the maximum
+	if len(e.terminalOutputs) > e.maxTerminalOutput {
+		e.terminalOutputs = e.terminalOutputs[len(e.terminalOutputs)-e.maxTerminalOutput:]
+	}
+
+	return e
+}
+
+// GetTerminalOutputs returns all terminal outputs
+func (e *Engine) GetTerminalOutputs() []string {
+	return e.terminalOutputs
+}
+
 func (e *Engine) SetPipe(pipe string) *Engine {
 	e.pipe = pipe
 
+	// Auto-detect mode based on piped content if no mode was explicitly set
+	if pipe != "" {
+		// Use isProbablyCommand from ui package to detect if the pipe content is a command
+		if e.detectPipeContentMode(pipe) {
+			e.mode = ExecEngineMode
+		} else {
+			e.mode = ChatEngineMode
+		}
+	}
+
 	return e
+}
+
+// detectPipeContentMode determines if piped content is likely a command or chat
+// Returns true if content is likely a command, false otherwise
+func (e *Engine) detectPipeContentMode(input string) bool {
+	// If empty, can't tell
+	if len(input) == 0 {
+		return false
+	}
+
+	// Common command patterns
+	commandRegexps := []string{
+		`^(ls|cd|grep|find|git|docker|kubectl|npm|go|python|pip)\s`,
+		`^[./]`,      // Starts with ./ or /
+		`\|\s*(\w+)`, // Contains pipe operator
+		`sudo\s`,     // Contains sudo
+		`^(cat|less|more|head|tail|vim|nano|mkdir|rmdir|touch|chmod|chown)\s`,
+		`^(apt|yum|brew)\s`,
+		`\s(>|>>|<)\s`, // Contains redirection operators
+	}
+
+	// Check if input matches any command patterns
+	for _, pattern := range commandRegexps {
+		matched, _ := regexp.MatchString(pattern, input)
+		if matched {
+			return true
+		}
+	}
+
+	// Special case: Command-like queries
+	commandQueryPatterns := []string{
+		`(?i)^(what|how|show|get|find|list|display).*(command|run|execute)`,
+		`(?i)^(what|how).*(ip|address|port|url|endpoint)`,
+		`(?i)^(what|how).*(container|pod|instance|server|service)`,
+		`(?i)^(how to|how do I) `,
+		`(?i)command for`,
+		`(?i)command to `,
+	}
+
+	// Check for command-like queries
+	for _, pattern := range commandQueryPatterns {
+		matched, _ := regexp.MatchString(pattern, input)
+		if matched {
+			return true
+		}
+	}
+
+	// If text is very short (1-3 words) and doesn't contain question mark, likely a command
+	words := strings.Fields(input)
+	if len(words) <= 3 && !strings.Contains(input, "?") {
+		return true
+	}
+
+	// Default to false if no command patterns matched
+	return false
 }
 
 func (e *Engine) Interrupt() *Engine {
@@ -102,17 +208,21 @@ func (e *Engine) Interrupt() *Engine {
 
 func (e *Engine) Clear() *Engine {
 	if e.mode == ExecEngineMode {
-		e.execMessages = []openai.ChatCompletionMessage{}
+		e.execMessages = []provider.Message{}
 	} else {
-		e.chatMessages = []openai.ChatCompletionMessage{}
+		e.chatMessages = []provider.Message{}
 	}
 
 	return e
 }
 
 func (e *Engine) Reset() *Engine {
-	e.execMessages = []openai.ChatCompletionMessage{}
-	e.chatMessages = []openai.ChatCompletionMessage{}
+	// Save current context before reset
+	e.updateSharedHistory()
+
+	// Clear both message histories
+	e.execMessages = []provider.Message{}
+	e.chatMessages = []provider.Message{}
 
 	return e
 }
@@ -124,19 +234,19 @@ func (e *Engine) ExecCompletion(input string) (*EngineExecOutput, error) {
 
 	e.appendUserMessage(input)
 
-	resp, err := e.client.CreateChatCompletion(
+	content, err := e.provider.CreateCompletion(
 		ctx,
-		openai.ChatCompletionRequest{
-			Model:     e.config.GetAiConfig().GetModel(),
-			MaxTokens: e.config.GetAiConfig().GetMaxTokens(),
-			Messages:  e.prepareCompletionMessages(),
+		provider.CompletionRequest{
+			Model:       e.config.GetAiConfig().GetModel(),
+			MaxTokens:   e.config.GetAiConfig().GetMaxTokens(),
+			Temperature: e.config.GetAiConfig().GetTemperature(),
+			Messages:    e.prepareCompletionMessages(),
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	content := resp.Choices[0].Message.Content
 	e.appendAssistantMessage(content)
 
 	var output EngineExecOutput
@@ -168,103 +278,108 @@ func (e *Engine) ChatStreamCompletion(input string) error {
 
 	e.appendUserMessage(input)
 
-	req := openai.ChatCompletionRequest{
-		Model:     e.config.GetAiConfig().GetModel(),
-		MaxTokens: e.config.GetAiConfig().GetMaxTokens(),
-		Messages:  e.prepareCompletionMessages(),
-		Stream:    true,
+	completionReq := provider.CompletionRequest{
+		Model:       e.config.GetAiConfig().GetModel(),
+		MaxTokens:   e.config.GetAiConfig().GetMaxTokens(),
+		Temperature: e.config.GetAiConfig().GetTemperature(),
+		Messages:    e.prepareCompletionMessages(),
+		Stream:      true,
 	}
 
-	stream, err := e.client.CreateChatCompletionStream(ctx, req)
+	stream, err := e.provider.CreateCompletionStream(ctx, completionReq)
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
 
 	var output string
 
-	for {
-		if e.running {
-			resp, err := stream.Recv()
+	for resp := range stream {
+		if !e.running {
+			break
+		}
 
-			if errors.Is(err, io.EOF) {
-				executable := false
-				if e.mode == ExecEngineMode {
-					if !strings.HasPrefix(output, noexec) && !strings.Contains(output, "\n") {
-						executable = true
-					}
+		output += resp.Content
+
+		if resp.Done {
+			executable := false
+			if e.mode == ExecEngineMode {
+				if !strings.HasPrefix(output, noexec) && !strings.Contains(output, "\n") {
+					executable = true
 				}
-
-				e.channel <- EngineChatStreamOutput{
-					content:    "",
-					last:       true,
-					executable: executable,
-				}
-				e.running = false
-				e.appendAssistantMessage(output)
-
-				return nil
 			}
-
-			if err != nil {
-				e.running = false
-				return err
-			}
-
-			delta := resp.Choices[0].Delta.Content
-
-			output += delta
 
 			e.channel <- EngineChatStreamOutput{
-				content: delta,
-				last:    false,
+				content:    "",
+				last:       true,
+				executable: executable,
 			}
-
-			// time.Sleep(time.Microsecond * 100)
-		} else {
-			stream.Close()
+			e.running = false
+			e.appendAssistantMessage(output)
 
 			return nil
 		}
+
+		e.channel <- EngineChatStreamOutput{
+			content: resp.Content,
+			last:    false,
+		}
 	}
+
+	// In case the stream closes without a done flag
+	executable := false
+	if e.mode == ExecEngineMode {
+		if !strings.HasPrefix(output, noexec) && !strings.Contains(output, "\n") {
+			executable = true
+		}
+	}
+
+	// Always send a final message to signal completion
+	e.channel <- EngineChatStreamOutput{
+		content:    "",
+		last:       true,
+		executable: executable,
+	}
+
+	e.running = false
+	e.appendAssistantMessage(output)
+
+	return nil
 }
 
 func (e *Engine) appendUserMessage(content string) *Engine {
+	msg := provider.Message{
+		Role:    "user",
+		Content: content,
+	}
+
 	if e.mode == ExecEngineMode {
-		e.execMessages = append(e.execMessages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: content,
-		})
+		e.execMessages = append(e.execMessages, msg)
 	} else {
-		e.chatMessages = append(e.chatMessages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: content,
-		})
+		e.chatMessages = append(e.chatMessages, msg)
 	}
 
 	return e
 }
 
 func (e *Engine) appendAssistantMessage(content string) *Engine {
+	msg := provider.Message{
+		Role:    "assistant",
+		Content: content,
+	}
+
 	if e.mode == ExecEngineMode {
-		e.execMessages = append(e.execMessages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: content,
-		})
+		e.execMessages = append(e.execMessages, msg)
 	} else {
-		e.chatMessages = append(e.chatMessages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: content,
-		})
+		e.chatMessages = append(e.chatMessages, msg)
 	}
 
 	return e
 }
 
-func (e *Engine) prepareCompletionMessages() []openai.ChatCompletionMessage {
-	messages := []openai.ChatCompletionMessage{
+func (e *Engine) prepareCompletionMessages() []provider.Message {
+	messages := []provider.Message{
 		{
-			Role:    openai.ChatMessageRoleSystem,
+			Role:    "system",
 			Content: e.prepareSystemPrompt(),
 		},
 	}
@@ -272,13 +387,68 @@ func (e *Engine) prepareCompletionMessages() []openai.ChatCompletionMessage {
 	if e.pipe != "" {
 		messages = append(
 			messages,
-			openai.ChatCompletionMessage{
-				Role:    openai.ChatMessageRoleUser,
+			provider.Message{
+				Role:    "user",
 				Content: e.preparePipePrompt(),
 			},
 		)
 	}
 
+	// Add terminal outputs as context if available
+	if len(e.terminalOutputs) > 0 {
+		var terminalContext strings.Builder
+
+		terminalContext.WriteString("Recent terminal outputs for context:\n\n")
+		for i, output := range e.terminalOutputs {
+			terminalContext.WriteString(fmt.Sprintf("Terminal output %d:\n```\n%s\n```\n\n", i+1, output))
+		}
+
+		messages = append(
+			messages,
+			provider.Message{
+				Role:    "system",
+				Content: terminalContext.String(),
+			},
+		)
+	}
+
+	// Add shared history context if available and we're in a new mode with no messages yet
+	currentModeMessages := e.execMessages
+	if e.mode == ChatEngineMode {
+		currentModeMessages = e.chatMessages
+	}
+
+	if len(currentModeMessages) == 0 && len(e.sharedHistory) > 0 {
+		// If we have no messages in the current mode but have shared history,
+		// add a context message explaining we're continuing with context from the other mode
+		contextModeStr := "chat"
+		if e.mode == ChatEngineMode {
+			contextModeStr = "command"
+		}
+
+		// Add context reminder
+		messages = append(
+			messages,
+			provider.Message{
+				Role:    "system",
+				Content: fmt.Sprintf("Here is recent context from %s mode that might be relevant:", contextModeStr),
+			},
+		)
+
+		// Add shared history
+		messages = append(messages, e.sharedHistory...)
+
+		// Add separator
+		messages = append(
+			messages,
+			provider.Message{
+				Role:    "system",
+				Content: fmt.Sprintf("Now continuing in %s mode:", e.mode.String()),
+			},
+		)
+	}
+
+	// Add current mode messages
 	if e.mode == ExecEngineMode {
 		messages = append(messages, e.execMessages...)
 	} else {

@@ -10,7 +10,7 @@
 
 ## What is Yai ?
 
-`Yai` (your AI) is an assistant for your terminal, using [OpenAI ChatGPT](https://chat.openai.com/) to build and run commands for you. You just need to describe them in your everyday language, it will take care or the rest. 
+`Yai` (your AI) is an assistant for your terminal, using [OpenAI ChatGPT](https://chat.openai.com/), [Google Gemini](https://gemini.google.com/) or [Anthropic Claude](https://claude.ai/) to build and run commands for you. You just need to describe them in your everyday language, it will take care or the rest. 
 
 You have any questions on random topics in mind? You can also ask `Yai`, and get the power of AI without leaving `/home`.
 
@@ -33,7 +33,27 @@ To install `Yai`, simply run:
 curl -sS https://raw.githubusercontent.com/xsikor/yai/main/install.sh | bash
 ```
 
-At first run, it will ask you for an [OpenAI API key](https://platform.openai.com/account/api-keys), and use it to create the configuration file in `~/.config/yai.json`.
+You can also choose your AI provider on the command line:
+
+```shell
+# Use OpenAI (default)
+yai -p openai "list all docker containers"
+
+# Use Google Gemini
+yai -p gemini "show me all running processes"
+
+# Use Anthropic Claude
+yai -p claude "generate a random password"
+
+# Use a specific model
+yai -p gemini -model gemini-2.0-flash "explain kubernetes"
+yai -p openai -model gpt-4 "optimize this algorithm"
+```
+
+At first run, it will ask you for an API key for your chosen provider, and use it to create the configuration file in `~/.config/yai.json`:
+- [OpenAI API key](https://platform.openai.com/account/api-keys) (default)
+- [Google Gemini API key](https://ai.google.dev/)
+- [Anthropic Claude API key](https://console.anthropic.com/)
 
 See [documentation](https://xsikor.github.io/yai/getting-started/#configuration) for more information.
 
