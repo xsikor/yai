@@ -113,7 +113,7 @@ func (r *Renderer) RenderModelMessage(provider string) string {
 }
 
 func (r *Renderer) RenderHelpMessage() string {
-	help := "**Help**\n"
+	help := "**Keyboard Shortcuts**\n"
 	help += "- `↑`/`↓` : navigate in history\n"
 	help += "- `tab`   : switch between `🚀 exec` and `💬 chat` prompt modes\n"
 	help += "- `ctrl+h`: show help\n"
@@ -121,6 +121,16 @@ func (r *Renderer) RenderHelpMessage() string {
 	help += "- `ctrl+r`: clear terminal and reset discussion history\n"
 	help += "- `ctrl+l`: clear terminal but keep discussion history\n"
 	help += "- `ctrl+c`: exit or interrupt command execution\n\n"
+	
+	help += "**Slash Commands**\n"
+	help += "- `/help`: show available slash commands\n" 
+	help += "- `/config`: show current configuration\n"
+	help += "- `/models`: show available AI models\n"
+	help += "- `/providers`: show available AI providers\n"
+	help += "- `/mode`: toggle between chat and execute modes\n"
+	help += "- `/clear`: clear the screen\n"
+	help += "- `/reset`: reset conversation history\n\n"
+	help += "Type a slash command and use Tab to autocomplete.\n\n"
 	
 	help += "**CLI Options**\n"
 	help += "- `-e`: use exec prompt mode\n"

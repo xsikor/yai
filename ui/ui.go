@@ -165,55 +165,44 @@ func (u *Ui) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// switch mode
 		case tea.KeyTab:
 			if !u.state.querying && !u.state.confirming {
+				var modeChangeMessage string
+				
 				if u.state.promptMode == ChatPromptMode {
 					u.state.promptMode = ExecPromptMode
 					u.components.prompt.SetMode(ExecPromptMode)
 					u.engine.SetMode(ai.ExecEngineMode)
+					modeChangeMessage = u.components.renderer.RenderSuccess("\n[Switched to command mode with context preservation]\n")
 				} else {
 					u.state.promptMode = ChatPromptMode
 					u.components.prompt.SetMode(ChatPromptMode)
 					u.engine.SetMode(ai.ChatEngineMode)
+					modeChangeMessage = u.components.renderer.RenderSuccess("\n[Switched to chat mode with context preservation]\n")
 				}
-				u.engine.Reset()
-				u.components.prompt, promptCmd = u.components.prompt.Update(msg)
+				
+				// Don't call engine.Reset() to preserve context between modes
+					u.components.prompt, promptCmd = u.components.prompt.Update(msg)
+
+					// Add the mode switch information to terminal outputs for better context
+					var oldMode, newMode string
+					if u.state.promptMode == ChatPromptMode {
+						oldMode = "command"
+						newMode = "chat"
+					} else {
+						oldMode = "chat"
+						newMode = "command"
+					}
+					u.engine.AddTerminalOutput(fmt.Sprintf("Switched from %s mode to %s mode. Context from previous conversation was preserved.", oldMode, newMode))
+
 				cmds = append(
 					cmds,
 					promptCmd,
+					tea.Println(modeChangeMessage),
 					textinput.Blink,
 				)
 			}
 		// enter
 		case tea.KeyEnter:
-			if u.state.configuring {
-				return u, u.finishConfig(u.components.prompt.GetValue())
-			}
-			if !u.state.querying && !u.state.confirming {
-				input := u.components.prompt.GetValue()
-				if input != "" {
-					inputPrint := u.components.prompt.AsString()
-					u.history.Add(input)
-					u.components.prompt.SetValue("")
-					u.components.prompt.Blur()
-					u.components.prompt, promptCmd = u.components.prompt.Update(msg)
-					if u.state.promptMode == ChatPromptMode {
-						cmds = append(
-							cmds,
-							promptCmd,
-							tea.Println(inputPrint),
-							u.startChatStream(input),
-							u.awaitChatStream(),
-						)
-					} else {
-						cmds = append(
-							cmds,
-							promptCmd,
-							tea.Println(inputPrint),
-							u.startExec(input),
-							u.components.spinner.Tick,
-						)
-					}
-				}
-			}
+			return u.handleEnterKey(msg)
 
 		// help
 		case tea.KeyCtrlH:
@@ -317,6 +306,27 @@ func (u *Ui) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ai.EngineExecOutput:
 		var output string
 		if msg.IsExecutable() {
+			// Check for information queries that should run automatically
+			if strings.Contains(strings.ToLower(u.state.args), "what") || 
+			   strings.Contains(strings.ToLower(u.state.args), "how") ||
+			   strings.Contains(strings.ToLower(u.state.args), "show") ||
+			   strings.Contains(strings.ToLower(u.state.args), "display") ||
+			   strings.Contains(strings.ToLower(u.state.args), "print") {
+				// Auto-execute basic info commands
+				u.state.confirming = false
+				u.state.executing = true
+				output = u.components.renderer.RenderContent(fmt.Sprintf("Executing: `%s`", msg.GetCommand()))
+				// Save output to engine context
+				u.engine.AddTerminalOutput(output)
+				u.components.prompt, promptCmd = u.components.prompt.Update(msg)
+				return u, tea.Sequence(
+					promptCmd,
+					tea.Println(output),
+					u.execCommand(msg.GetCommand()),
+				)
+			}
+			
+			// Regular confirmation flow
 			u.state.confirming = true
 			u.state.command = msg.GetCommand()
 			output = u.components.renderer.RenderContent(fmt.Sprintf("`%s`", u.state.command))
@@ -326,12 +336,16 @@ func (u *Ui) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			output = u.components.renderer.RenderContent(msg.GetExplanation())
 			u.components.prompt.Focus()
 			if u.state.runMode == CliMode {
+				// Save output to engine context before quitting
+				u.engine.AddTerminalOutput(output)
 				return u, tea.Sequence(
 					tea.Println(output),
 					tea.Quit,
 				)
 			}
 		}
+		// Save output to engine context
+		u.engine.AddTerminalOutput(output)
 		u.components.prompt, promptCmd = u.components.prompt.Update(msg)
 		return u, tea.Sequence(
 			promptCmd,
@@ -402,6 +416,14 @@ func (u *Ui) View() string {
 	}
 
 	if !u.state.querying && !u.state.confirming && !u.state.executing {
+		// If we have active autocomplete, show suggestions
+		if u.components.prompt.HasActiveAutocomplete() {
+			return fmt.Sprintf(
+				"%s\n\n%s",
+				u.components.prompt.View(),
+				u.components.prompt.GetAutocompleteSuggestions(),
+			)
+		}
 		return u.components.prompt.View()
 	}
 
@@ -428,8 +450,14 @@ func (u *Ui) startRepl(config *config.Config) tea.Cmd {
 		func() tea.Msg {
 			u.config = config
 
+			// Use chat mode as default if no preference in config
 			if u.state.promptMode == DefaultPromptMode {
-				u.state.promptMode = GetPromptModeFromString(config.GetUserConfig().GetDefaultPromptMode())
+				configMode := config.GetUserConfig().GetDefaultPromptMode()
+				if configMode != "" {
+					u.state.promptMode = GetPromptModeFromString(configMode)
+				} else {
+					u.state.promptMode = ChatPromptMode
+				}
 			}
 
 			engineMode := ai.ExecEngineMode
@@ -459,8 +487,14 @@ func (u *Ui) startRepl(config *config.Config) tea.Cmd {
 func (u *Ui) startCli(config *config.Config) tea.Cmd {
 	u.config = config
 
+	// Use chat mode as default if no preference in config
 	if u.state.promptMode == DefaultPromptMode {
-		u.state.promptMode = GetPromptModeFromString(config.GetUserConfig().GetDefaultPromptMode())
+		configMode := config.GetUserConfig().GetDefaultPromptMode()
+		if configMode != "" {
+			u.state.promptMode = GetPromptModeFromString(configMode)
+		} else {
+			u.state.promptMode = ChatPromptMode
+		}
 	}
 
 	engineMode := ai.ExecEngineMode
@@ -761,8 +795,17 @@ func (u *Ui) execCommand(input string) tea.Cmd {
 	return tea.ExecProcess(c, func(error error) tea.Msg {
 		u.state.executing = false
 		u.state.command = ""
-
-		return run.NewRunOutput(error, "[error]", "[ok]")
+		
+		output := "[ok]"
+		if error != nil {
+			output = "[error]"
+		}
+		
+		// Capture command execution result to engine context
+		result := run.NewRunOutput(error, "[error]", "[ok]")
+		u.engine.AddTerminalOutput(fmt.Sprintf("$ %s\n%s", input, output))
+		
+		return result
 	})
 }
 
