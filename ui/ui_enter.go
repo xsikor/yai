@@ -4,6 +4,9 @@ package ui
 
 import (
 	"fmt"
+	
+	"github.com/ekkinox/yai/ai"
+	
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
 )
