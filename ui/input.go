@@ -7,21 +7,30 @@ import (
 	"io"
 	"os"
 	"strings"
+	
+	"github.com/ekkinox/yai/ai/provider"
 )
 
 type UiInput struct {
-	runMode    RunMode
-	promptMode PromptMode
-	args       string
-	pipe       string
+	runMode       RunMode
+	promptMode    PromptMode
+	providerType  provider.ProviderType
+	modelName     string
+	showModel     bool
+	args          string
+	pipe          string
 }
 
 func NewUIInput() (*UiInput, error) {
 	flagSet := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
-	var exec, chat bool
+	var exec, chat, showModel bool
+	var providerFlag, modelFlag string
 	flagSet.BoolVar(&exec, "e", false, "exec prompt mode")
 	flagSet.BoolVar(&chat, "c", false, "chat prompt mode")
+	flagSet.BoolVar(&showModel, "m", false, "show current AI model and provider")
+	flagSet.StringVar(&providerFlag, "p", "", "AI provider (openai, claude, gemini)")
+	flagSet.StringVar(&modelFlag, "model", "", "specific model to use")
 	err := flagSet.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Println("Error parsing flags:", err)
@@ -68,11 +77,28 @@ func NewUIInput() (*UiInput, error) {
 		promptMode = ChatPromptMode
 	}
 
+	// Set provider type based on flag
+	var providerType provider.ProviderType
+	switch strings.ToLower(providerFlag) {
+	case "openai":
+		providerType = provider.ProviderOpenAI
+	case "claude":
+		providerType = provider.ProviderClaude
+	case "gemini":
+		providerType = provider.ProviderGemini
+	default:
+		// Default to OpenAI if not specified
+		providerType = provider.ProviderOpenAI
+	}
+
 	return &UiInput{
-		runMode:    runMode,
-		promptMode: promptMode,
-		args:       strings.Join(args, " "),
-		pipe:       pipe,
+		runMode:      runMode,
+		promptMode:   promptMode,
+		providerType: providerType,
+		modelName:    modelFlag,
+		showModel:    showModel,
+		args:         strings.Join(args, " "),
+		pipe:         pipe,
 	}, nil
 }
 
@@ -90,4 +116,16 @@ func (i *UiInput) GetArgs() string {
 
 func (i *UiInput) GetPipe() string {
 	return i.pipe
+}
+
+func (i *UiInput) GetProviderType() provider.ProviderType {
+	return i.providerType
+}
+
+func (i *UiInput) GetShowModel() bool {
+	return i.showModel
+}
+
+func (i *UiInput) GetModelName() string {
+	return i.modelName
 }
