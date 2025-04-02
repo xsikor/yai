@@ -428,8 +428,14 @@ func (u *Ui) startRepl(config *config.Config) tea.Cmd {
 		func() tea.Msg {
 			u.config = config
 
+			// Use chat mode as default if no preference in config
 			if u.state.promptMode == DefaultPromptMode {
-				u.state.promptMode = GetPromptModeFromString(config.GetUserConfig().GetDefaultPromptMode())
+				configMode := config.GetUserConfig().GetDefaultPromptMode()
+				if configMode != "" {
+					u.state.promptMode = GetPromptModeFromString(configMode)
+				} else {
+					u.state.promptMode = ChatPromptMode
+				}
 			}
 
 			engineMode := ai.ExecEngineMode
@@ -459,8 +465,14 @@ func (u *Ui) startRepl(config *config.Config) tea.Cmd {
 func (u *Ui) startCli(config *config.Config) tea.Cmd {
 	u.config = config
 
+	// Use chat mode as default if no preference in config
 	if u.state.promptMode == DefaultPromptMode {
-		u.state.promptMode = GetPromptModeFromString(config.GetUserConfig().GetDefaultPromptMode())
+		configMode := config.GetUserConfig().GetDefaultPromptMode()
+		if configMode != "" {
+			u.state.promptMode = GetPromptModeFromString(configMode)
+		} else {
+			u.state.promptMode = ChatPromptMode
+		}
 	}
 
 	engineMode := ai.ExecEngineMode

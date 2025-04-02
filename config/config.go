@@ -123,8 +123,8 @@ func WriteConfig(providerType provider.ProviderType, key string, model string, w
 		viper.Set(openai_model, model)
 	}
 
-	// user defaults
-	viper.SetDefault(user_default_prompt_mode, "exec")
+	// user defaults - chat mode is the default
+	viper.SetDefault(user_default_prompt_mode, "chat")
 	viper.SetDefault(user_preferences, "")
 
 	if write {

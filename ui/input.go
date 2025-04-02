@@ -70,11 +70,9 @@ func NewUIInput() (*UiInput, error) {
 		runMode = CliMode
 	}
 
-	promptMode := DefaultPromptMode
+	promptMode := ChatPromptMode // Default to chat mode
 	if exec && !chat {
 		promptMode = ExecPromptMode
-	} else if !exec && chat {
-		promptMode = ChatPromptMode
 	}
 
 	// Set provider type based on flag
