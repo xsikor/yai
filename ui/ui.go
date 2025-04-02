@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ekkinox/yai/ai"
+	"github.com/ekkinox/yai/ai/provider"
 	"github.com/ekkinox/yai/config"
 	"github.com/ekkinox/yai/history"
 	"github.com/ekkinox/yai/run"
@@ -17,17 +18,19 @@ import (
 )
 
 type UiState struct {
-	error       error
-	runMode     RunMode
-	promptMode  PromptMode
-	configuring bool
-	querying    bool
-	confirming  bool
-	executing   bool
-	args        string
-	pipe        string
-	buffer      string
-	command     string
+	error        error
+	runMode      RunMode
+	promptMode   PromptMode
+	providerType provider.ProviderType
+	modelName    string
+	configuring  bool
+	querying     bool
+	confirming   bool
+	executing    bool
+	args         string
+	pipe         string
+	buffer       string
+	command      string
 }
 
 type UiDimensions struct {
@@ -53,17 +56,19 @@ type Ui struct {
 func NewUi(input *UiInput) *Ui {
 	return &Ui{
 		state: UiState{
-			error:       nil,
-			runMode:     input.GetRunMode(),
-			promptMode:  input.GetPromptMode(),
-			configuring: false,
-			querying:    false,
-			confirming:  false,
-			executing:   false,
-			args:        input.GetArgs(),
-			pipe:        input.GetPipe(),
-			buffer:      "",
-			command:     "",
+			error:        nil,
+			runMode:      input.GetRunMode(),
+			promptMode:   input.GetPromptMode(),
+			providerType: input.GetProviderType(),
+			modelName:    input.GetModelName(),
+			configuring:  false,
+			querying:     false,
+			confirming:   false,
+			executing:    false,
+			args:         input.GetArgs(),
+			pipe:         input.GetPipe(),
+			buffer:       "",
+			command:      "",
 		},
 		dimensions: UiDimensions{
 			150,
@@ -509,16 +514,141 @@ func (u *Ui) startConfig() tea.Cmd {
 
 		u.state.buffer = u.components.renderer.RenderConfigMessage()
 		u.state.command = ""
+		u.components.prompt = NewPrompt(ProviderPromptMode)
+
+		return nil
+	}
+}
+
+func (u *Ui) startModelConfig(providerType provider.ProviderType) tea.Cmd {
+	return func() tea.Msg {
+		u.state.providerType = providerType
+		u.state.buffer = u.components.renderer.RenderModelMessage(string(providerType))
+		u.components.prompt = NewPrompt(ModelPromptMode)
+
+		return nil
+	}
+}
+
+func (u *Ui) startApiKeyConfig(model string) tea.Cmd {
+	return func() tea.Msg {
+		if model != "" {
+			u.state.modelName = model
+		} else {
+			// Use default model if none specified
+			u.state.modelName = config.GetDefaultModelForProvider(u.state.providerType)
+		}
+		
+		u.state.buffer = u.components.renderer.RenderApiKeyMessage()
 		u.components.prompt = NewPrompt(ConfigPromptMode)
 
 		return nil
 	}
 }
 
-func (u *Ui) finishConfig(key string) tea.Cmd {
+func (u *Ui) finishConfig(input string) tea.Cmd {
+	// Step 1: Provider selection
+	if u.components.prompt.GetMode() == ProviderPromptMode {
+		var providerType provider.ProviderType
+		
+		// Handle empty input (default to OpenAI)
+		if input == "" {
+			input = "1"
+		}
+		
+		switch input {
+		case "1", "openai":
+			providerType = provider.ProviderOpenAI
+		case "2", "gemini":
+			providerType = provider.ProviderGemini
+		case "3", "claude":
+			providerType = provider.ProviderClaude
+		default:
+			// Default to OpenAI if input is invalid
+			providerType = provider.ProviderOpenAI
+		}
+		
+		return u.startModelConfig(providerType)
+	}
+	
+	// Step 2: Model selection
+	if u.components.prompt.GetMode() == ModelPromptMode {
+		var modelName string
+		
+		// Handle empty input (use default)
+		if input == "" {
+			input = "1" // Default to first option
+		}
+		
+		// Select model based on provider and input
+		switch string(u.state.providerType) {
+		case "openai":
+			switch input {
+			case "1":
+				modelName = "gpt-3.5-turbo"
+			case "2":
+				modelName = "gpt-4"
+			case "3":
+				modelName = "gpt-4-turbo"
+			default:
+				modelName = "gpt-3.5-turbo" // Default
+			}
+		case "gemini":
+			switch input {
+			case "1":
+				modelName = "gemini-2.0-flash"
+			case "2":
+				modelName = "gemini-2.5-pro-exp-03-25"
+			case "3":
+				modelName = "gemini-2.0-pro"
+			case "4":
+				modelName = "gemini-2.0-flash-lite"
+			case "5":
+				modelName = "gemini-1.5-pro"
+			case "6":
+				modelName = "gemini-1.5-flash"
+			case "7":
+				modelName = "gemini-1.5-flash-8b"
+			default:
+				modelName = "gemini-2.0-flash" // Default
+			}
+		case "claude":
+			switch input {
+			case "1":
+				modelName = "claude-3-haiku-20240307"
+			case "2":
+				modelName = "claude-3-sonnet-20240229"
+			case "3":
+				modelName = "claude-3-opus-20240229"
+			default:
+				modelName = "claude-3-haiku-20240307" // Default
+			}
+		default:
+			// Fallback to default for selected provider
+			modelName = config.GetDefaultModelForProvider(u.state.providerType)
+		}
+		
+		return u.startApiKeyConfig(modelName)
+	}
+	
+	// Step 3: API key input
 	u.state.configuring = false
-
-	config, err := config.WriteConfig(key, true)
+	
+	// API Key validation - don't allow empty key
+	if input == "" {
+		u.state.error = fmt.Errorf("API key cannot be empty. Please provide a valid API key.")
+		// Go back to the API key input
+		return u.startApiKeyConfig(u.state.modelName)
+	}
+	
+	// Model already selected in previous step
+	model := u.state.modelName
+	if model == "" {
+		// Safety check - use default if somehow we got here with no model
+		model = config.GetDefaultModelForProvider(u.state.providerType)
+	}
+	
+	config, err := config.WriteConfig(u.state.providerType, input, model, true)
 	if err != nil {
 		u.state.error = err
 		return nil

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ekkinox/yai/ai/provider"
 	"github.com/ekkinox/yai/system"
 
 	"github.com/sashabaranov/go-openai"
@@ -62,14 +63,15 @@ func testWriteConfig(t *testing.T) {
 	setupViper(t)
 	defer cleanup(t)
 
-	cfg, err := WriteConfig("new_test_key", false)
+	cfg, err := WriteConfig(provider.ProviderOpenAI, "new_test_key", openai.GPT3Dot5Turbo, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "new_test_key", cfg.GetAiConfig().GetKey())
 	assert.Equal(t, openai.GPT3Dot5Turbo, cfg.GetAiConfig().GetModel())
-	assert.Equal(t, "test_proxy", cfg.GetAiConfig().GetProxy())
+	// When using WriteConfig, it sets default values from the function
+	assert.Equal(t, "", cfg.GetAiConfig().GetProxy())
 	assert.Equal(t, 0.2, cfg.GetAiConfig().GetTemperature())
-	assert.Equal(t, 2000, cfg.GetAiConfig().GetMaxTokens())
+	assert.Equal(t, 1000, cfg.GetAiConfig().GetMaxTokens())
 	assert.Equal(t, "exec", cfg.GetUserConfig().GetDefaultPromptMode())
 	assert.Equal(t, "test_preferences", cfg.GetUserConfig().GetPreferences())
 

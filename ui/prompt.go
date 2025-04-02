@@ -12,7 +12,11 @@ const (
 	exec_icon          = "🚀 > "
 	exec_placeholder   = "Execute something..."
 	config_icon        = "🔒 > "
-	config_placeholder = "Enter your OpenAI key..."
+	config_placeholder = "Enter your API key..."
+	provider_icon      = "🤖 > "
+	provider_placeholder = "Select provider (openai, claude, gemini)..."
+	model_icon         = "📦 > "
+	model_placeholder  = "Select model (press Enter for default)..."
 	chat_icon          = "💬 > "
 	chat_placeholder   = "Ask me something..."
 )
@@ -112,6 +116,10 @@ func getPromptIcon(mode PromptMode) string {
 		return style.Render(exec_icon)
 	case ConfigPromptMode:
 		return style.Render(config_icon)
+	case ProviderPromptMode:
+		return style.Render(provider_icon)
+	case ModelPromptMode:
+		return style.Render(model_icon)
 	default:
 		return style.Render(chat_icon)
 	}
@@ -123,6 +131,10 @@ func getPromptPlaceholder(mode PromptMode) string {
 		return exec_placeholder
 	case ConfigPromptMode:
 		return config_placeholder
+	case ProviderPromptMode:
+		return provider_placeholder
+	case ModelPromptMode:
+		return model_placeholder
 	default:
 		return chat_placeholder
 	}
