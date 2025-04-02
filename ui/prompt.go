@@ -127,7 +127,11 @@ func (p *Prompt) Update(msg tea.Msg) (*Prompt, tea.Cmd) {
 			// If the user types, update autocomplete suggestions
 			if p.mode == ChatPromptMode || p.mode == ExecPromptMode {
 				currentValue := p.input.Value()
-				if strings.HasPrefix(currentValue, "/") {
+				
+				// Special handling for the first slash character
+				if currentValue == "/" {
+					p.autocomplete.StartAutocomplete(currentValue)
+				} else if strings.HasPrefix(currentValue, "/") {
 					p.autocomplete.StartAutocomplete(currentValue)
 				} else {
 					p.autocomplete.Reset()

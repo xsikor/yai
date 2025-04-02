@@ -1,6 +1,7 @@
 package slash
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -29,7 +30,24 @@ func (a *AutocompleteState) StartAutocomplete(input string) bool {
 		return false
 	}
 
-	// Get potential completions
+	// Special case: if it's just a slash, show all commands
+	if input == "/" {
+		var allCommands []string
+		for _, cmd := range SlashCommands {
+			allCommands = append(allCommands, "/"+cmd.Name)
+		}
+		
+		// Sort commands alphabetically
+		sort.Strings(allCommands)
+		
+		a.Active = true
+		a.Suggestions = allCommands
+		a.Index = 0
+		a.OriginalInput = input
+		return true
+	}
+
+	// Get potential completions for partial commands
 	suggestions := GetCompletions(input)
 	if len(suggestions) == 0 {
 		a.Reset()
@@ -89,6 +107,12 @@ func (a *AutocompleteState) FormatSuggestions() string {
 
 	var sb strings.Builder
 	
+	// Add heading for slash commands
+	if a.OriginalInput == "/" {
+		sb.WriteString("Available commands:\n")
+	}
+	
+	// Format all suggestions
 	for i, suggestion := range a.Suggestions {
 		if i == a.Index {
 			sb.WriteString("► " + suggestion + " ")
@@ -96,6 +120,9 @@ func (a *AutocompleteState) FormatSuggestions() string {
 			sb.WriteString(suggestion + " ")
 		}
 	}
+	
+	// Add hint for tab completion
+	sb.WriteString("\n\nPress Tab to complete command")
 	
 	return sb.String()
 }
