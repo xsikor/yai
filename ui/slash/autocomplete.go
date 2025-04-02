@@ -120,9 +120,9 @@ func (a *AutocompleteState) FormatSuggestions() string {
 			sb.WriteString(suggestion + " ")
 		}
 	}
-	
-	// Add hint for tab completion
-	sb.WriteString("\n\nPress Tab to complete command")
-	
+
+	// Add hint for navigation and completion
+	sb.WriteString("\n\nUse Up/Down to navigate, Tab or Enter to complete")
+
 	return sb.String()
 }

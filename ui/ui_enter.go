@@ -48,22 +48,34 @@ func (u *Ui) handleEnterKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 						tea.Println(u.components.renderer.RenderSuccess("\n[History cleared]\n")),
 						textinput.Blink,
 					)
-				} else if cmdOutput == "[mode]" {
-					// Toggle mode
-					if u.state.promptMode == ChatPromptMode {
-						u.state.promptMode = ExecPromptMode
-						u.components.prompt.SetMode(ExecPromptMode)
-						u.engine.SetMode(ai.ExecEngineMode)
-					} else {
-						u.state.promptMode = ChatPromptMode
-						u.components.prompt.SetMode(ChatPromptMode)
-						u.engine.SetMode(ai.ChatEngineMode)
-					}
-					return u, tea.Sequence(
-						promptCmd,
-						tea.Println(u.components.renderer.RenderSuccess(fmt.Sprintf("\n[Switched to %s mode]\n", u.state.promptMode.String()))),
-						textinput.Blink,
-					)
+					} else if cmdOutput == "[mode]" {
+						// Toggle mode with context preservation
+						var modeChangeMessage string
+						
+						if u.state.promptMode == ChatPromptMode {
+							u.state.promptMode = ExecPromptMode
+							u.components.prompt.SetMode(ExecPromptMode)
+							u.engine.SetMode(ai.ExecEngineMode)
+							modeChangeMessage = fmt.Sprintf("\n[Switched to %s mode with context preservation]\n", u.state.promptMode.String())
+							// Add the mode switch information to terminal outputs for better context
+							u.engine.AddTerminalOutput("Switched from chat mode to command mode. Context from previous conversation was preserved.")
+
+							modeChangeMessage = fmt.Sprintf("\n[Switched to %s mode with context preservation]\n", u.state.promptMode.String())
+							u.engine.SetMode(ai.ChatEngineMode)
+							modeChangeMessage = fmt.Sprintf("\n[Switched to %s mode with context preservation]\n", u.state.promptMode.String())
+							// Add the mode switch information to terminal outputs for better context
+							u.engine.AddTerminalOutput("Switched from command mode to chat mode. Context from previous conversation was preserved.")
+
+							u.state.promptMode = ChatPromptMode
+							u.components.prompt.SetMode(ChatPromptMode)
+							u.engine.SetMode(ai.ChatEngineMode)
+							modeChangeMessage = fmt.Sprintf("\n[Switched to %s mode with context preservation]\n", u.state.promptMode.String())
+						}
+						return u, tea.Sequence(
+							promptCmd,
+							tea.Println(u.components.renderer.RenderSuccess(modeChangeMessage)),
+							textinput.Blink,
+						)
 				}
 				
 				// Regular command output
@@ -81,6 +93,9 @@ func (u *Ui) handleEnterKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 			u.components.prompt.SetValue("")
 			u.components.prompt.Blur()
 			u.components.prompt, promptCmd = u.components.prompt.Update(msg)
+			
+			// Store the input as args for auto-execution detection
+			u.state.args = input
 			if u.state.promptMode == ChatPromptMode {
 				cmds = append(
 					cmds,

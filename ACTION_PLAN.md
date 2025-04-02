@@ -36,12 +36,17 @@ This document outlines the current status of our implementation of multiple AI p
 - [x] Added slash commands with autocomplete
 - [x] Created autocompletion UI for command discovery
 - [x] Added interactive commands for config, help, etc.
+- [x] Implemented context preservation between chat and command modes
+- [x] Added terminal output history to provide better context in conversations
+- [x] Added auto-execution for informational commands (what, how, show, etc.)
 
 ## 🚧 In Progress
 
 ### Piping Support
 - [x] Added command detection heuristics for piped input
-- [ ] Completing automatic mode detection for piped content
+- [x] Implemented automatic mode detection for piped content
+- [x] Added special handling for printing raw JSON in command mode with piped input
+- [x] Enhanced detection for command-like queries (e.g., "What IP address for container?")
 - [ ] Testing pipe functionality across different shells
 
 ## 📋 Planned Enhancements
