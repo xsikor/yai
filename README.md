@@ -1,8 +1,8 @@
 # 🚀 Yai 💬 - AI powered terminal assistant
 
-[![build](https://github.com/ekkinox/yai/actions/workflows/build.yml/badge.svg)](https://github.com/ekkinox/yai/actions/workflows/build.yml)
-[![release](https://github.com/ekkinox/yai/actions/workflows/release.yml/badge.svg)](https://github.com/ekkinox/yai/actions/workflows/release.yml)
-[![doc](https://github.com/ekkinox/yai/actions/workflows/doc.yml/badge.svg)](https://github.com/ekkinox/yai/actions/workflows/doc.yml)
+[![build](https://github.com/xsikor/yai/actions/workflows/build.yml/badge.svg)](https://github.com/xsikor/yai/actions/workflows/build.yml)
+[![release](https://github.com/xsikor/yai/actions/workflows/release.yml/badge.svg)](https://github.com/xsikor/yai/actions/workflows/release.yml)
+[![doc](https://github.com/xsikor/yai/actions/workflows/doc.yml/badge.svg)](https://github.com/xsikor/yai/actions/workflows/doc.yml)
 
 > Unleash the power of artificial intelligence to streamline your command line experience.
 
@@ -23,19 +23,19 @@ And you can also give any supplementary preferences to fine tune your experience
 
 ## Documentation
 
-A complete documentation is available at [https://ekkinox.github.io/yai/](https://ekkinox.github.io/yai/).
+A complete documentation is available at [https://xsikor.github.io/yai/](https://xsikor.github.io/yai/).
 
 ## Quick start
 
 To install `Yai`, simply run:
 
 ```shell
-curl -sS https://raw.githubusercontent.com/ekkinox/yai/main/install.sh | bash
+curl -sS https://raw.githubusercontent.com/xsikor/yai/main/install.sh | bash
 ```
 
 At first run, it will ask you for an [OpenAI API key](https://platform.openai.com/account/api-keys), and use it to create the configuration file in `~/.config/yai.json`.
 
-See [documentation](https://ekkinox.github.io/yai/getting-started/#configuration) for more information.
+See [documentation](https://xsikor.github.io/yai/getting-started/#configuration) for more information.
 
 ## Thanks
 

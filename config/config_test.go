@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ekkinox/yai/system"
+	"github.com/xsikor/yai/system"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/viper"

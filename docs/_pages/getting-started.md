@@ -20,18 +20,18 @@ And you can also give any supplementary preferences to fine tune your experience
 To install `Yai`, simply run:
 
 ```shell
-curl -sS https://raw.githubusercontent.com/ekkinox/yai/main/install.sh | bash
+curl -sS https://raw.githubusercontent.com/xsikor/yai/main/install.sh | bash
 ```
 
 - this will detect the proper binary to install for your machine
 - and upgrade to the latest stable version if already installed
 
-You can also install it from the [available releases](https://github.com/ekkinox/yai/releases) from the GitHub repository.
+You can also install it from the [available releases](https://github.com/xsikor/yai/releases) from the GitHub repository.
 
 To uninstall `Yai`, simply run the provided uninstallation script:
 
 ```shell
-curl -sS https://raw.githubusercontent.com/ekkinox/yai/main/uninstall.sh | bash
+curl -sS https://raw.githubusercontent.com/xsikor/yai/main/uninstall.sh | bash
 ```
 
 ## Configuration

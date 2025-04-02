@@ -1,4 +1,4 @@
-module github.com/ekkinox/yai
+module github.com/xsikor/yai
 
 go 1.19
 
@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/glamour v0.6.0
 	github.com/charmbracelet/lipgloss v0.9.1
+	github.com/xsikor/yai v0.0.0-20231214104157-5fbe0f3adf44
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/sashabaranov/go-openai v1.17.9
 	github.com/spf13/viper v1.18.1

@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ekkinox/yai/config"
-	"github.com/ekkinox/yai/system"
+	"github.com/xsikor/yai/config"
+	"github.com/xsikor/yai/system"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -321,7 +321,7 @@ func (e *Engine) prepareSystemPromptExecPart() string {
 }
 
 func (e *Engine) prepareSystemPromptChatPart() string {
-	return "You are Yai a powerful terminal assistant created by github.com/ekkinox.\n" +
+	return "You are Yai a powerful terminal assistant created by github.com/xsikor.\n" +
 		"You will answer in the most helpful possible way.\n" +
 		"Always format your answer in markdown format.\n\n" +
 		"For example:\n" +
