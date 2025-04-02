@@ -2,10 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	
+	"github.com/ekkinox/yai/config"
+	"github.com/ekkinox/yai/ui/slash"
 )
 
 const (
@@ -22,8 +26,9 @@ const (
 )
 
 type Prompt struct {
-	mode  PromptMode
-	input textinput.Model
+	mode         PromptMode
+	input        textinput.Model
+	autocomplete *slash.AutocompleteState
 }
 
 func NewPrompt(mode PromptMode) *Prompt {
@@ -38,9 +43,13 @@ func NewPrompt(mode PromptMode) *Prompt {
 
 	input.Focus()
 
+	// Initialize slash commands
+	slash.InitSlashCommands()
+
 	return &Prompt{
-		mode:  mode,
-		input: input,
+		mode:         mode,
+		input:        input,
+		autocomplete: slash.NewAutocompleteState(),
 	}
 }
 
@@ -82,9 +91,73 @@ func (p *Prompt) Focus() *Prompt {
 
 func (p *Prompt) Update(msg tea.Msg) (*Prompt, tea.Cmd) {
 	var updateCmd tea.Cmd
-	p.input, updateCmd = p.input.Update(msg)
 
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyTab:
+			// Handle autocomplete
+			currentValue := p.input.Value()
+			if strings.HasPrefix(currentValue, "/") {
+				if !p.autocomplete.Active {
+					p.autocomplete.StartAutocomplete(currentValue)
+				}
+				
+				if p.autocomplete.Active {
+					suggestion := p.autocomplete.GetCurrentSuggestion()
+					if suggestion != "" {
+						p.input.SetValue(suggestion)
+						return p, nil
+					}
+				}
+			}
+		case tea.KeyShiftTab:
+			// Cycle through previous suggestions
+			if p.autocomplete.Active {
+				suggestion := p.autocomplete.PrevSuggestion()
+				if suggestion != "" {
+					p.input.SetValue(suggestion)
+					return p, nil
+				}
+			}
+		case tea.KeyEnter, tea.KeyEsc, tea.KeyCtrlC:
+			// Reset autocomplete
+			p.autocomplete.Reset()
+		default:
+			// If the user types, update autocomplete suggestions
+			if p.mode == ChatPromptMode || p.mode == ExecPromptMode {
+				currentValue := p.input.Value()
+				if strings.HasPrefix(currentValue, "/") {
+					p.autocomplete.StartAutocomplete(currentValue)
+				} else {
+					p.autocomplete.Reset()
+				}
+			}
+		}
+	}
+
+	p.input, updateCmd = p.input.Update(msg)
 	return p, updateCmd
+}
+
+// HasActiveAutocomplete returns true if autocomplete is active
+func (p *Prompt) HasActiveAutocomplete() bool {
+	return p.autocomplete.Active
+}
+
+// GetAutocompleteSuggestions returns formatted autocomplete suggestions
+func (p *Prompt) GetAutocompleteSuggestions() string {
+	return p.autocomplete.FormatSuggestions()
+}
+
+// IsSlashCommand checks if the current input is a slash command
+func (p *Prompt) IsSlashCommand() bool {
+	return slash.IsSlashCommand(p.input.Value())
+}
+
+// ExecuteSlashCommand executes the current slash command with the given config
+func (p *Prompt) ExecuteSlashCommand(config *config.Config) string {
+	return slash.ExecuteCommand(config, p.input.Value())
 }
 
 func (p *Prompt) View() string {
